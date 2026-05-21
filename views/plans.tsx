@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { AppLayout } from "@/components/layout";
-import { useGetMe, useSubscribePlan } from "@workspace/api-client-react";
+import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Check, X, Zap, Lock } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { useQueryClient } from "@tanstack/react-query";
 
 const C = {
   primary: "#7C5CFC",
@@ -77,22 +80,66 @@ function Cell({ value }: { value: CellValue }) {
   return <span style={{ color: C.text, fontWeight: 600, fontSize: 14 }}>{value}</span>;
 }
 
+const PLAN_CREDITS: Record<string, number> = {
+  basic: 300,
+  starter: 800,
+  pro: 2500,
+};
+
 export default function Plans() {
   const { data: user } = useGetMe();
-  const subscribeMutation = useSubscribePlan();
   const { toast } = useToast();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [pendingPlan, setPendingPlan] = useState<string | null>(null);
 
-  const handleSubscribe = (planId: string) => {
+  // TODO: Replace selectPlan() with Lemon Squeezy webhook when payment is connected.
+  // The webhook will handle plan assignment automatically for real paying users.
+  // This current implementation is for testing only.
+  const selectPlan = async (planId: string) => {
     if (!user) { router.push("/auth/register"); return; }
-    subscribeMutation.mutate({ data: { planId } }, {
-      onSuccess: () => toast({ title: "Plan updated successfully!" }),
-      onError: (error: any) => toast({
+
+    setPendingPlan(planId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const res = await fetch("/api/plans/subscribe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ planId }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to update plan");
+      }
+
+      const data = await res.json();
+      const creditsAssigned = data.creditsAssigned ?? PLAN_CREDITS[planId] ?? 0;
+
+      toast({
+        title: "Plan activated!",
+        description: `${creditsAssigned.toLocaleString()} credits added to your account.`,
+      });
+
+      // Invalidate queries so navbar credits and user plan refresh
+      queryClient.invalidateQueries({ queryKey: ["credits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+
+      router.push("/dashboard");
+    } catch (err: any) {
+      toast({
         title: "Failed to update plan",
-        description: error.response?.data?.error || "Please try again later",
+        description: err?.message || "Please try again later",
         variant: "destructive",
-      }),
-    });
+      });
+    } finally {
+      setPendingPlan(null);
+    }
   };
 
   const currentPlan = user?.plan ?? "basic";
@@ -170,8 +217,8 @@ export default function Plans() {
                       <span style={{ fontSize: 13, color: C.muted }}>/mo</span>
                     </div>
                     <Button
-                      onClick={() => handleSubscribe(plan.id)}
-                      disabled={subscribeMutation.isPending || isCurrentPlan}
+                      onClick={() => selectPlan(plan.id)}
+                      disabled={!!pendingPlan || isCurrentPlan}
                       style={{
                         width: "100%", height: 36, fontSize: 13, fontWeight: 700,
                         background: plan.highlight && !isCurrentPlan ? C.primary : "transparent",
@@ -181,7 +228,7 @@ export default function Plans() {
                         boxShadow: plan.highlight && !isCurrentPlan ? `0 0 16px ${C.primary}40` : "none",
                       }}
                     >
-                      {isCurrentPlan ? "Current Plan" : plan.cta}
+                      {pendingPlan === plan.id ? "Activating..." : isCurrentPlan ? "Current Plan" : plan.cta}
                     </Button>
                   </div>
                 );
@@ -234,8 +281,8 @@ export default function Plans() {
                     borderLeft: `1px solid ${C.border}`,
                   }}>
                     <Button
-                      onClick={() => handleSubscribe(plan.id)}
-                      disabled={subscribeMutation.isPending || isCurrentPlan}
+                      onClick={() => selectPlan(plan.id)}
+                      disabled={!!pendingPlan || isCurrentPlan}
                       style={{
                         width: "100%", height: 36, fontSize: 13, fontWeight: 700,
                         background: plan.highlight && !isCurrentPlan ? C.primary : "transparent",
@@ -245,7 +292,7 @@ export default function Plans() {
                         boxShadow: plan.highlight && !isCurrentPlan ? `0 0 16px ${C.primary}40` : "none",
                       }}
                     >
-                      {isCurrentPlan ? "Current Plan" : plan.cta}
+                      {pendingPlan === plan.id ? "Activating..." : isCurrentPlan ? "Current Plan" : plan.cta}
                     </Button>
                   </div>
                 );

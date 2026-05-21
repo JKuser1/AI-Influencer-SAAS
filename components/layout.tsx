@@ -119,7 +119,10 @@ export function Navbar() {
   const { data: creditsData } = useQuery<{ creditsBalance: number }>({
     queryKey: ["credits"],
     queryFn: async () => {
-      const r = await fetch("/api/credits");
+      const token = session?.access_token;
+      const r = await fetch("/api/credits", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!r.ok) return { creditsBalance: 0 };
       return r.json();
     },
