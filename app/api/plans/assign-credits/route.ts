@@ -1,81 +1,52 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { getAuthenticatedUser, PLAN_CREDITS } from "@/lib/supabase-server";
 
 // TODO: Replace with Lemon Squeezy webhook when payment is connected.
-// The webhook will handle plan assignment automatically for real paying users.
-// This current implementation is for testing only.
+// This endpoint auto-assigns credits to users who have an active plan but 0 subscription credits.
+// This is for testing only.
 
-const PLAN_CREDITS: Record<string, number> = {
-  basic: 300,
-  starter: 800,
-  pro: 2500,
-  free: 0,
-};
-
-const supabaseUrl =
-  process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "https://placeholder.supabase.co";
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
-
+// POST /api/plans/assign-credits
 export async function POST(request: Request) {
-  try {
-    const authHeader = request.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "");
+  const { supabase, user } = await getAuthenticatedUser(request);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: token ? { headers: { Authorization: `Bearer ${token}` } } : {},
-    });
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("plan_name, subscription_credits")
+    .eq("id", user.id)
+    .single();
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token ?? undefined);
+  if (profileError || !profile) {
+    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+  }
 
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  const planName = profile.plan_name ?? "basic";
+  const creditsToAssign = PLAN_CREDITS[planName] ?? 0;
+  const currentCredits = profile.subscription_credits ?? 0;
 
-    const { data: profile, error: profileError } = await supabase
+  // Only assign if the user has 0 subscription credits but a paying plan
+  if ((currentCredits === 0 || currentCredits === null) && creditsToAssign > 0) {
+    const { error: updateError } = await supabase
       .from("profiles")
-      .select("plan_name, subscription_credits")
-      .eq("id", user.id)
-      .single();
+      .update({ subscription_credits: creditsToAssign })
+      .eq("id", user.id);
 
-    if (profileError) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
-    }
-
-    const planName = profile?.plan_name ?? "free";
-    const creditsToAssign = PLAN_CREDITS[planName] ?? 0;
-    const currentCredits = profile?.subscription_credits ?? 0;
-
-    // Only assign if credits are 0 or null and plan has credits
-    if ((currentCredits === 0 || currentCredits === null) && creditsToAssign > 0) {
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ subscription_credits: creditsToAssign })
-        .eq("id", user.id);
-
-      if (updateError) {
-        return NextResponse.json({ error: "Failed to assign credits" }, { status: 500 });
-      }
-
-      return NextResponse.json({
-        success: true,
-        plan: planName,
-        creditsAdded: creditsToAssign,
-        newBalance: creditsToAssign,
-      });
+    if (updateError) {
+      return NextResponse.json({ error: "Failed to assign credits" }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      message: "Credits already assigned",
-      creditsAdded: 0,
-      currentCredits,
+      plan: planName,
+      creditsAdded: creditsToAssign,
+      newBalance: creditsToAssign,
     });
-  } catch {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
+
+  return NextResponse.json({
+    success: true,
+    message: "Credits already assigned",
+    creditsAdded: 0,
+    currentCredits,
+  });
 }
