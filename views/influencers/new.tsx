@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, createContext, useContext, type ReactNode } from "react";
+import { useState, createContext, useContext, useEffect, type ReactNode } from "react";
 import { AuthGuard } from "@/components/layout";
 import { useCreateInfluencer, useGenerateInfluencer, useGetMe, useGetInfluencers } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   Star, Camera, Lock,
 } from "lucide-react";
 import Link from "next/link";
+import NextImage from "next/image";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -397,35 +398,44 @@ const WizardCtx = createContext<{ totalSteps: number; stepLabels: string[] }>({
 // ─── Shared Card Components ────────────────────────────────────────────────
 
 function ImageCard({
-  src, alt, label, sub, selected, onClick, imgClass,
+  src, alt, label, sub, selected, onClick, imgClass, priority,
 }: {
   src: string; alt: string; label: string; sub?: string;
-  selected: boolean; onClick: () => void; imgClass?: string;
+  selected: boolean; onClick: () => void; imgClass?: string; priority?: boolean;
 }) {
+  const [loaded, setLoaded] = useState(false);
+
+  // Determine aspect ratio for fill layout
+  const isPortrait = imgClass?.includes("3/4") || imgClass?.includes("4/3");
+
   return (
-    <motion.button
+    <button
       type="button"
       onClick={onClick}
-      whileHover={{ y: -4 }}
-      whileTap={{ scale: 0.97 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
       className={cn(
         "group relative rounded-xl overflow-hidden border-2 cursor-pointer text-left w-full",
-        "transition-all duration-300 ease-out",
+        "transition-all duration-200 ease-out hover:-translate-y-1 active:scale-[0.97]",
         selected
           ? "border-primary shadow-[0_0_28px_rgba(168,85,247,0.5)]"
           : "border-white/10 hover:border-white/40 hover:shadow-[0_8px_30px_rgba(0,0,0,0.4)]",
       )}
     >
-      <div className="relative w-full overflow-hidden bg-zinc-900">
-        <img
+      <div className={cn("relative w-full overflow-hidden bg-zinc-900", imgClass ?? "aspect-square")}>
+        {/* Skeleton shown while loading */}
+        {!loaded && (
+          <div className="absolute inset-0 bg-zinc-800 animate-pulse" />
+        )}
+        <NextImage
           src={src}
           alt={alt}
-          loading="lazy"
+          fill
+          sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
+          priority={priority}
           className={cn(
-            "w-full object-cover transition-transform duration-500 ease-out group-hover:scale-110",
-            imgClass ?? "aspect-square",
+            "object-cover transition-all duration-500 ease-out group-hover:scale-110",
+            loaded ? "opacity-100" : "opacity-0",
           )}
+          onLoad={() => setLoaded(true)}
         />
         <div className={cn(
           "absolute inset-0 transition-opacity duration-300",
@@ -436,20 +446,11 @@ function ImageCard({
           "absolute inset-0 bg-primary/12 transition-opacity duration-300",
           selected ? "opacity-100" : "opacity-0",
         )} />
-        <AnimatePresence>
-          {selected && (
-            <motion.div
-              key="check"
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 500, damping: 22 }}
-              className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary shadow-[0_0_12px_rgba(168,85,247,0.6)] flex items-center justify-center z-10"
-            >
-              <Check className="w-3.5 h-3.5 text-white" />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {selected && (
+          <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary shadow-[0_0_12px_rgba(168,85,247,0.6)] flex items-center justify-center z-10">
+            <Check className="w-3.5 h-3.5 text-white" />
+          </div>
+        )}
       </div>
       <div className={cn(
         "py-2.5 px-3 text-center transition-colors duration-300",
@@ -463,7 +464,7 @@ function ImageCard({
         </div>
         {sub && <div className="text-[11px] text-white/50 mt-0.5 leading-tight">{sub}</div>}
       </div>
-    </motion.button>
+    </button>
   );
 }
 
@@ -591,14 +592,14 @@ function CharacterPreviewPanel({ config }: { config: CharacterConfig }) {
       {/* Face preview */}
       <div className="relative w-full aspect-square rounded-2xl overflow-hidden border border-white/10 bg-zinc-900">
         {previewImg ? (
-          <motion.img
+          <NextImage
             key={previewImg}
             src={previewImg}
             alt="Preview"
-            initial={{ opacity: 0, scale: 1.05 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4 }}
-            className="w-full h-full object-cover"
+            fill
+            sizes="320px"
+            priority
+            className="object-cover transition-opacity duration-300"
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-white/20">
@@ -686,6 +687,7 @@ function StepGender({ value, onChange }: { value: string; onChange: (v: "male" |
             selected={value === g.id}
             onClick={() => onChange(g.id as "male" | "female")}
             imgClass="aspect-[3/4]"
+            priority
           />
         ))}
       </div>
@@ -725,11 +727,13 @@ function StepStyle({ gender, value, onChange }: { gender: string; value: string;
                 className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
               />
             ) : (
-              <img
+              <NextImage
                 src={s.img}
                 alt={s.label}
-                loading="lazy"
-                className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                fill
+                sizes="(max-width: 640px) 45vw, 35vw"
+                priority
+                className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
               />
             )}
             {/* Gradient overlay */}
@@ -1355,7 +1359,7 @@ function StepReviewGenerate({
         <div className="space-y-4">
           <div className="relative rounded-2xl overflow-hidden border border-white/10 aspect-[3/4] bg-zinc-900">
             {previewImg ? (
-              <img src={previewImg} alt="Character preview" className="w-full h-full object-cover" />
+              <NextImage src={previewImg} alt="Character preview" fill sizes="280px" className="object-cover" priority />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <User className="w-16 h-16 text-white/20" />
@@ -1562,6 +1566,18 @@ function WizardProgress({ step }: { step: number }) {
   );
 }
 
+// ─── Image Prefetch Hook ──────────────────────────────────────────────────────
+// Eagerly loads images for the next wizard step so they appear instantly.
+function usePrefetchStepImages(urls: string[]) {
+  useEffect(() => {
+    urls.forEach((src) => {
+      if (!src) return;
+      const img = new window.Image();
+      img.src = src;
+    });
+  }, [urls.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: CharacterConfig = {
@@ -1595,6 +1611,40 @@ export default function NewInfluencer() {
   const [config, setConfig]           = useState<CharacterConfig>(DEFAULT_CONFIG);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState("");
+
+  // Prefetch images for the next step to eliminate loading delays when navigating
+  const nextStepImages = (() => {
+    const g = config.gender;
+    const a = config.artStyle;
+    switch (step) {
+      case 1: // next = style step
+        return [...FEMALE_ART_STYLES, ...MALE_ART_STYLES].map((s) => s.img).filter((s) => !s.endsWith(".mp4"));
+      case 2: // next = ethnicity
+        return resolveEthnicities(g, a).map((e) => e.img);
+      case 3: // next = eye colors
+        return EYE_COLORS.map((e) => e.img);
+      case 4: // next = hair
+        const hairStyles = (g === "male" && a === "anime") ? MALE_ANIME_HAIR_STYLES
+          : (g === "female" && a === "anime") ? FEMALE_ANIME_HAIR_STYLES
+          : byGender(g, FEMALE_HAIR_STYLES, MALE_HAIR_STYLES);
+        const hairColors = (g === "male" && a === "anime") ? MALE_ANIME_HAIR_COLORS
+          : (g === "female" && a === "anime") ? FEMALE_ANIME_HAIR_COLORS
+          : byGender(g, FEMALE_HAIR_COLORS, MALE_HAIR_COLORS);
+        return [...hairStyles.map((h) => h.img), ...hairColors.map((h) => h.img)];
+      case 5: // next = body
+        const bodyShapes = (g === "male" && a === "anime") ? MALE_ANIME_BODY_SHAPES
+          : (g === "female" && a === "anime") ? FEMALE_ANIME_BODY_SHAPES
+          : (g === "female" && a === "realistic") ? FEMALE_REALISTIC_BODY_SHAPES
+          : byGender(g, FEMALE_BODY_SHAPES, MALE_BODY_SHAPES);
+        return bodyShapes.map((b) => b.img);
+      case 6: // next = physique (female) or personality (male)
+        if (g === "female") return [...FEMALE_BREAST_SIZES.map((b) => b.img), ...FEMALE_BUTT_SIZES.map((b) => b.img)];
+        return []; // male personality step has no images
+      default:
+        return [];
+    }
+  })();
+  usePrefetchStepImages(nextStepImages);
 
   const set = <K extends keyof CharacterConfig>(key: K, value: CharacterConfig[K]) =>
     setConfig((prev) => ({ ...prev, [key]: value }));

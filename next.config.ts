@@ -7,7 +7,12 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const backend = process.env.BACKEND_URL?.trim();
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    // Allow local /public images to pass through the optimizer
+    localPatterns: [{ pathname: "/**" }],
+    // Serve images as WebP/AVIF for faster transfers
+    formats: ["image/avif", "image/webp"],
+  },
 };
 
 export default nextConfig;
