@@ -108,7 +108,24 @@ export default function Plans() {
     if (!user) { router.push("/auth/register"); return; }
     const productId = WHOP_PRODUCT_IDS[planId];
     if (!productId) return;
-    window.Whop?.openCheckout({ productId });
+
+    const launch = () => window.Whop?.openCheckout({ productId });
+
+    if (window.Whop?.openCheckout) {
+      launch();
+    } else {
+      // Script hasn't loaded yet — inject it manually and retry
+      const existing = document.querySelector('script[src*="whop-embed"]');
+      if (!existing) {
+        const s = document.createElement("script");
+        s.src = "https://whop.com/embed/whop-embed.js";
+        s.onload = () => setTimeout(launch, 300);
+        document.head.appendChild(s);
+      } else {
+        // Script tag exists but window.Whop not ready — wait briefly and retry
+        setTimeout(launch, 500);
+      }
+    }
   };
 
   // Listen for Whop's post-purchase message and activate the plan via API

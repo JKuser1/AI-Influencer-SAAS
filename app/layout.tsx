@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppProviders } from "@/components/providers";
+import Script from "next/script";
 
 export const metadata: Metadata = {
   title: "InfluenceAI Studio",
@@ -15,11 +16,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <head>
-        <script src="https://whop.com/embed/whop-embed.js" async />
-      </head>
       <body className="min-h-full flex flex-col">
         <AppProviders>{children}</AppProviders>
+        <Script
+          src="https://whop.com/embed/whop-embed.js"
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
