@@ -19,16 +19,16 @@ declare global {
 
 // Whop product IDs — one per plan
 const WHOP_PRODUCT_IDS: Record<string, string> = {
-  basic:   "prod_HEynMPTdrrsGP",
-  starter: "prod_muKXYmMDO5G42",
-  pro:     "prod_3S6R0Ypwj7bCz",
+  basic:   "plan_D5ZUinMIB5DyW",
+  starter: "plan_0Ci43RCmPMOW4",
+  pro:     "plan_ivBQT0voqG3BI",
 };
 
 // Maps Whop product ID back to internal plan name (used in the message handler)
 const PRODUCT_TO_PLAN: Record<string, string> = {
-  "prod_HEynMPTdrrsGP": "basic",
-  "prod_muKXYmMDO5G42": "starter",
-  "prod_3S6R0Ypwj7bCz": "pro",
+  "plan_D5ZUinMIB5DyW": "basic",
+  "plan_0Ci43RCmPMOW4": "starter",
+  "plan_ivBQT0voqG3BI": "pro",
 };
 
 const C = {
