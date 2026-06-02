@@ -9,27 +9,6 @@ import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 
-declare global {
-  interface Window {
-    Whop?: {
-      openCheckout: (options: { productId: string }) => void;
-    };
-  }
-}
-
-// Whop product IDs — one per plan
-const WHOP_PRODUCT_IDS: Record<string, string> = {
-  basic:   "plan_D5ZUinMIB5DyW",
-  starter: "plan_0Ci43RCmPMOW4",
-  pro:     "plan_ivBQT0voqG3BI",
-};
-
-// Maps Whop product ID back to internal plan name (used in the message handler)
-const PRODUCT_TO_PLAN: Record<string, string> = {
-  "plan_D5ZUinMIB5DyW": "basic",
-  "plan_0Ci43RCmPMOW4": "starter",
-  "plan_ivBQT0voqG3BI": "pro",
-};
 
 const C = {
   primary: "#7C5CFC",
@@ -105,123 +84,87 @@ export default function Plans() {
   const { toast } = useToast();
   const router = useRouter();
 
-  const openCheckout = (productId: string, planName: string) => {
-    // Not logged in — save intended plan and redirect to login
+  const openCheckout = (planName: string) => {
+    const checkoutUrls: Record<string, string> = {
+      basic:   "https://whop.com/checkout/plan_D5ZUinMIB5DyW",
+      starter: "https://whop.com/checkout/plan_0Ci43RCmPMOW4",
+      pro:     "https://whop.com/checkout/plan_ivBQT0voqG3BI",
+    };
+
+    const url = checkoutUrls[planName];
+    if (!url) return;
+
     if (!user) {
       localStorage.setItem("intended_plan", planName);
-      localStorage.setItem("intended_product_id", productId);
       router.push("/login?redirect=/plans");
       return;
     }
 
-    // Try Whop embed first
-    if (window.Whop?.openCheckout) {
-      window.Whop.openCheckout({ productId });
-      return;
-    }
+    // Remove existing overlay if any
+    const existing = document.getElementById("whop-overlay");
+    if (existing) document.body.removeChild(existing);
 
-    // Fallback: inject the script then retry, or show iframe modal
-    const existing = document.querySelector('script[src*="whop-embed"]');
-    if (!existing) {
-      const s = document.createElement("script");
-      s.src = "https://whop.com/embed/whop-embed.js";
-      s.onload = () => setTimeout(() => {
-        if (window.Whop?.openCheckout) {
-          window.Whop.openCheckout({ productId });
-        } else {
-          openIframeModal(productId);
-        }
-      }, 300);
-      document.head.appendChild(s);
-    } else {
-      // Script tag exists but window.Whop not ready yet
-      setTimeout(() => {
-        if (window.Whop?.openCheckout) {
-          window.Whop.openCheckout({ productId });
-        } else {
-          openIframeModal(productId);
-        }
-      }, 600);
-    }
-  };
-
-  const openIframeModal = (productId: string) => {
-    if (document.getElementById("whop-overlay")) return;
-
+    // Create overlay
     const overlay = document.createElement("div");
     overlay.id = "whop-overlay";
-    overlay.style.cssText = [
-      "position:fixed;top:0;left:0;width:100%;height:100%",
-      "background:rgba(0,0,0,0.8);z-index:9999",
-      "display:flex;align-items:center;justify-content:center",
-    ].join(";");
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85); z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+    `;
 
+    // Create modal
     const modal = document.createElement("div");
-    modal.style.cssText = [
-      "position:relative;width:480px;height:680px",
-      "border-radius:16px;overflow:hidden;background:white",
-    ].join(";");
+    modal.style.cssText = `
+      position: relative;
+      width: 90%;
+      max-width: 480px;
+      height: 80vh;
+      max-height: 700px;
+      border-radius: 16px;
+      overflow: hidden;
+      background: white;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.4);
+    `;
 
+    // Close button
     const closeBtn = document.createElement("button");
     closeBtn.innerHTML = "&#x2715;";
-    closeBtn.style.cssText = [
-      "position:absolute;top:10px;right:10px",
-      "background:rgba(0,0,0,0.5);color:white",
-      "border:none;border-radius:50%;width:32px;height:32px",
-      "font-size:16px;cursor:pointer;z-index:10",
-    ].join(";");
-    const removeOverlay = () => {
-      if (document.body.contains(overlay)) document.body.removeChild(overlay);
-    };
-    closeBtn.onclick = removeOverlay;
+    closeBtn.style.cssText = `
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(0,0,0,0.6); color: white;
+      border: none; border-radius: 50%;
+      width: 36px; height: 36px; font-size: 16px;
+      cursor: pointer; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+    `;
+    closeBtn.onclick = () => document.body.removeChild(overlay);
 
+    // Iframe
     const iframe = document.createElement("iframe");
-    iframe.src = `https://whop.com/checkout/${productId}/`;
-    iframe.style.cssText = "width:100%;height:100%;border:none;";
+    iframe.src = url;
+    iframe.style.cssText = "width: 100%; height: 100%; border: none;";
+    iframe.setAttribute("allow", "payment *");
 
     modal.appendChild(closeBtn);
     modal.appendChild(iframe);
     overlay.appendChild(modal);
-    overlay.onclick = (e) => { if (e.target === overlay) removeOverlay(); };
+    overlay.onclick = (e) => {
+      if (e.target === overlay) document.body.removeChild(overlay);
+    };
     document.body.appendChild(overlay);
   };
 
   // After login, auto-open checkout if user came from a plan button click
   useEffect(() => {
-    if (!user) return;
-    const productId = localStorage.getItem("intended_product_id");
-    const planName  = localStorage.getItem("intended_plan");
-    if (productId && planName) {
-      localStorage.removeItem("intended_product_id");
-      localStorage.removeItem("intended_plan");
-      setTimeout(() => openCheckout(productId, planName), 500);
+    if (user) {
+      const intendedPlan = localStorage.getItem("intended_plan");
+      if (intendedPlan) {
+        localStorage.removeItem("intended_plan");
+        setTimeout(() => openCheckout(intendedPlan), 500);
+      }
     }
   }, [user]);
-
-  // Listen for Whop's post-purchase message and activate the plan via API
-  useEffect(() => {
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.data?.type !== "whop:purchase:success") return;
-      const productId: string = event.data?.productId ?? "";
-      const planName = PRODUCT_TO_PLAN[productId] || "basic";
-
-      const res = await fetch("/api/activate-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planName }),
-      });
-
-      if (res.ok) {
-        toast({ title: "Plan activated!", description: "Credits have been added to your account." });
-        router.push("/dashboard");
-      } else {
-        toast({ title: "Activation failed", description: "Please contact support.", variant: "destructive" });
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
 
   const currentPlan = user?.plan ?? "basic";
 
@@ -298,7 +241,7 @@ export default function Plans() {
                       <span style={{ fontSize: 13, color: C.muted }}>/mo</span>
                     </div>
                     <Button
-                      onClick={() => openCheckout(WHOP_PRODUCT_IDS[plan.id], plan.id)}
+                      onClick={() => openCheckout(plan.id)}
                       disabled={isCurrentPlan}
                       style={{
                         width: "100%", height: 36, fontSize: 13, fontWeight: 700,
@@ -362,7 +305,7 @@ export default function Plans() {
                     borderLeft: `1px solid ${C.border}`,
                   }}>
                     <Button
-                      onClick={() => openCheckout(WHOP_PRODUCT_IDS[plan.id], plan.id)}
+                      onClick={() => openCheckout(plan.id)}
                       disabled={isCurrentPlan}
                       style={{
                         width: "100%", height: 36, fontSize: 13, fontWeight: 700,
