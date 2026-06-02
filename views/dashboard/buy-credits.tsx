@@ -5,10 +5,11 @@ import { AppLayout, AuthGuard } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useGetMe } from "@workspace/api-client-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { Crown, CheckCircle2, Zap, Star, ArrowRight, ShoppingCart, RefreshCw, Gift } from "lucide-react";
+import { WHOP_CHECKOUT_URLS, buildCheckoutUrl } from "@/lib/whop";
 
 const PACKS = [
   {
@@ -79,47 +80,42 @@ export default function BuyCredits() {
   const { data: me } = useGetMe();
   const { data: credits } = useCredits();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [purchasing, setPurchasing] = useState<string | null>(null);
 
   const hasSubscription = !!(me?.plan && PLAN_NAMES[me.plan]);
   const planName = me?.plan ? (PLAN_NAMES[me.plan] ?? null) : null;
 
-  const purchaseMutation = useMutation({
-    mutationFn: async (packId: string) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      const r = await fetch("/api/credits/purchase", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ packId }),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({ error: "Purchase failed" }));
-        throw new Error(err.error ?? "Purchase failed");
-      }
-      return r.json();
-    },
-    onSuccess: (data) => {
+  /**
+   * Redirect the user to the Whop checkout page for the chosen credit pack.
+   * The user's ID and pack ID are passed as metadata so the webhook can
+   * add the correct bonus credits after payment succeeds.
+   */
+  const handlePurchase = async (packId: string) => {
+    const baseUrl = WHOP_CHECKOUT_URLS[packId];
+    if (!baseUrl) {
       toast({
-        title: "Bonus credits added!",
-        description: `${data.creditsAdded} bonus credits added. New total: ${data.newBalance} credits.`,
+        title: "Coming soon",
+        description: "This credit pack is not yet available for purchase. Please check back soon.",
+        variant: "destructive",
       });
-      queryClient.invalidateQueries({ queryKey: ["credits"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Purchase failed", description: err.message, variant: "destructive" });
-    },
-    onSettled: () => setPurchasing(null),
-  });
+      return;
+    }
 
-  const handlePurchase = (packId: string) => {
     setPurchasing(packId);
-    purchaseMutation.mutate(packId);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = String(session?.user?.id ?? me?.id ?? "");
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+
+    const checkoutUrl = buildCheckoutUrl({
+      baseUrl,
+      userId,
+      redirectUrl: `${appUrl}/dashboard/buy-credits?checkout=success`,
+      extraMetadata: { packId },
+    });
+
+    window.location.href = checkoutUrl;
+    // Note: setPurchasing(null) is intentionally omitted — the page navigates away.
   };
 
   const subCredits = credits?.subscriptionCredits ?? 0;
@@ -317,7 +313,7 @@ export default function BuyCredits() {
 
                   <Button
                     onClick={() => handlePurchase(pack.id)}
-                    disabled={!hasSubscription || purchasing === pack.id || purchaseMutation.isPending}
+                    disabled={!hasSubscription || !!purchasing}
                     className="w-full h-12 rounded-xl font-semibold text-white gap-2"
                     style={{
                       background: hasSubscription
@@ -329,7 +325,7 @@ export default function BuyCredits() {
                     {purchasing === pack.id ? (
                       <>
                         <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                        Processing…
+                        Redirecting...
                       </>
                     ) : (
                       <>
