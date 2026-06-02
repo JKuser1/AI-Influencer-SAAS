@@ -27,9 +27,9 @@ function verifyWhopWebhookSignature(
 
 // Whop product ID → plan mapping (used by membership.went_valid event)
 const PRODUCT_PLAN_MAP: Record<string, { plan: string; credits: number }> = {
-  "prod_HEynMPTdrrsGP": { plan: "basic",   credits: 300  },
-  "prod_muKXYmMDO5G42": { plan: "starter", credits: 800  },
-  "prod_3S6R0Ypwj7bCz": { plan: "pro",     credits: 2500 },
+  "plan_D5ZUinMIB5DyW": { plan: "basic",   credits: 300  },
+  "plan_0Ci43RCmPMOW4": { plan: "starter", credits: 800  },
+  "plan_ivBQT0voqG3BI": { plan: "pro",     credits: 2500 },
 };
 
 // Credit pack metadata → credit amount mapping (mirrors /api/credits/purchase)
