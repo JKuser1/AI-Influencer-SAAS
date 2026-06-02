@@ -25,6 +25,13 @@ function verifyWhopWebhookSignature(
   }
 }
 
+// Whop product ID → plan mapping (used by membership.went_valid event)
+const PRODUCT_PLAN_MAP: Record<string, { plan: string; credits: number }> = {
+  "prod_HEynMPTdrrsGP": { plan: "basic",   credits: 300  },
+  "prod_muKXYmMDO5G42": { plan: "starter", credits: 800  },
+  "prod_3S6R0Ypwj7bCz": { plan: "pro",     credits: 2500 },
+};
+
 // Credit pack metadata → credit amount mapping (mirrors /api/credits/purchase)
 const PACK_CREDITS: Record<string, { credits: number; name: string }> = {
   "starter-pack": { credits: 200,  name: "Starter Pack" },
@@ -97,6 +104,8 @@ export async function POST(request: Request) {
       // ── Handle events ──────────────────────────────────────────────────
       if (eventType === "payment.succeeded") {
         await handlePaymentSucceeded(supabase, data);
+      } else if (eventType === "membership.went_valid") {
+        await handleMembershipWentValid(supabase, data);
       } else if (eventType === "membership.deactivated") {
         await handleMembershipDeactivated(supabase, data);
       } else {
@@ -194,6 +203,52 @@ async function handlePaymentSucceeded(
     );
 
   console.log(`[whop-webhook] Activated plan "${internalPlan}" for user ${userId}`);
+}
+
+// ─── membership.went_valid ────────────────────────────────────────────────────
+// Triggered by the Whop embedded checkout on successful payment.
+// Looks up the user by email (since no userId metadata is available here).
+async function handleMembershipWentValid(
+  supabase: ReturnType<typeof createAdminClient>,
+  data: Record<string, any>
+) {
+  const productId: string = data?.product_id ?? data?.product?.id ?? "";
+  const userEmail: string = data?.user?.email ?? "";
+
+  const entry = PRODUCT_PLAN_MAP[productId];
+  if (!entry) {
+    console.warn(`[whop-webhook] membership.went_valid — unknown product: ${productId}`);
+    return;
+  }
+
+  if (!userEmail) {
+    console.warn("[whop-webhook] membership.went_valid — missing user email");
+    return;
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("email", userEmail)
+    .single();
+
+  if (!profile) {
+    console.warn(`[whop-webhook] membership.went_valid — no profile for email: ${userEmail}`);
+    return;
+  }
+
+  await supabase
+    .from("profiles")
+    .update({
+      plan_name:            entry.plan,
+      subscription_credits: entry.credits,
+      subscription_status:  "active",
+      updated_at:           new Date().toISOString(),
+    })
+    .eq("id", profile.id)
+    .throwOnError();
+
+  console.log(`[whop-webhook] Activated plan "${entry.plan}" for ${userEmail} via membership.went_valid`);
 }
 
 // ─── membership.deactivated ───────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect } from "react";
 import { AppLayout } from "@/components/layout";
 import { useGetMe } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,28 @@ import { Check, X, Zap, Lock } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { WHOP_CHECKOUT_URLS } from "@/lib/whop";
+
+declare global {
+  interface Window {
+    Whop?: {
+      openCheckout: (options: { productId: string }) => void;
+    };
+  }
+}
+
+// Whop product IDs — one per plan
+const WHOP_PRODUCT_IDS: Record<string, string> = {
+  basic:   "prod_HEynMPTdrrsGP",
+  starter: "prod_muKXYmMDO5G42",
+  pro:     "prod_3S6R0Ypwj7bCz",
+};
+
+// Maps Whop product ID back to internal plan name (used in the message handler)
+const PRODUCT_TO_PLAN: Record<string, string> = {
+  "prod_HEynMPTdrrsGP": "basic",
+  "prod_muKXYmMDO5G42": "starter",
+  "prod_3S6R0Ypwj7bCz": "pro",
+};
 
 const C = {
   primary: "#7C5CFC",
@@ -83,24 +104,37 @@ export default function Plans() {
   const { data: user } = useGetMe();
   const { toast } = useToast();
   const router = useRouter();
-  const [pendingPlan, setPendingPlan] = useState<string | null>(null);
-
-  const selectPlan = (planId: string) => {
+  const openCheckout = (planId: string) => {
     if (!user) { router.push("/auth/register"); return; }
-
-    const url = WHOP_CHECKOUT_URLS[planId];
-    if (!url) {
-      toast({
-        title: "Coming soon",
-        description: "This plan is not yet available for purchase. Please contact support.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setPendingPlan(planId);
-    window.location.href = url;
+    const productId = WHOP_PRODUCT_IDS[planId];
+    if (!productId) return;
+    window.Whop?.openCheckout({ productId });
   };
+
+  // Listen for Whop's post-purchase message and activate the plan via API
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data?.type !== "whop:purchase:success") return;
+      const productId: string = event.data?.productId ?? "";
+      const planName = PRODUCT_TO_PLAN[productId] || "basic";
+
+      const res = await fetch("/api/activate-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planName }),
+      });
+
+      if (res.ok) {
+        toast({ title: "Plan activated!", description: "Credits have been added to your account." });
+        router.push("/dashboard");
+      } else {
+        toast({ title: "Activation failed", description: "Please contact support.", variant: "destructive" });
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
 
   const currentPlan = user?.plan ?? "basic";
 
@@ -177,8 +211,8 @@ export default function Plans() {
                       <span style={{ fontSize: 13, color: C.muted }}>/mo</span>
                     </div>
                     <Button
-                      onClick={() => selectPlan(plan.id)}
-                      disabled={!!pendingPlan || isCurrentPlan}
+                      onClick={() => openCheckout(plan.id)}
+                      disabled={isCurrentPlan}
                       style={{
                         width: "100%", height: 36, fontSize: 13, fontWeight: 700,
                         background: plan.highlight && !isCurrentPlan ? C.primary : "transparent",
@@ -188,7 +222,7 @@ export default function Plans() {
                         boxShadow: plan.highlight && !isCurrentPlan ? `0 0 16px ${C.primary}40` : "none",
                       }}
                     >
-                      {pendingPlan === plan.id ? "Redirecting..." : isCurrentPlan ? "Current Plan" : plan.cta}
+                      {isCurrentPlan ? "Current Plan" : plan.cta}
                     </Button>
                   </div>
                 );
@@ -241,8 +275,8 @@ export default function Plans() {
                     borderLeft: `1px solid ${C.border}`,
                   }}>
                     <Button
-                      onClick={() => selectPlan(plan.id)}
-                      disabled={!!pendingPlan || isCurrentPlan}
+                      onClick={() => openCheckout(plan.id)}
+                      disabled={isCurrentPlan}
                       style={{
                         width: "100%", height: 36, fontSize: 13, fontWeight: 700,
                         background: plan.highlight && !isCurrentPlan ? C.primary : "transparent",
@@ -252,7 +286,7 @@ export default function Plans() {
                         boxShadow: plan.highlight && !isCurrentPlan ? `0 0 16px ${C.primary}40` : "none",
                       }}
                     >
-                      {pendingPlan === plan.id ? "Redirecting..." : isCurrentPlan ? "Current Plan" : plan.cta}
+                      {isCurrentPlan ? "Current Plan" : plan.cta}
                     </Button>
                   </div>
                 );
