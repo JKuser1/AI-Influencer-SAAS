@@ -1,23 +1,20 @@
 import crypto from "crypto";
 
 // ─── Whop Plan ID → internal plan name mapping ───────────────────────────────
-// TODO: Replace these placeholder Whop plan IDs with the real ones from your
-// Whop dashboard (Settings → Plans → copy the plan ID, e.g. plan_xxxxxxxxxx).
+// These are the Whop plan IDs extracted from the checkout link paths.
 export const WHOP_PLAN_ID_MAP: Record<string, string> = {
-  "plan_REPLACE_WITH_BASIC_PLAN_ID":   "basic",
-  "plan_REPLACE_WITH_STARTER_PLAN_ID": "starter",
-  "plan_REPLACE_WITH_PRO_PLAN_ID":     "pro",
+  "plan_D5ZUinMIB5DyW": "basic",
+  "plan_0Ci43RCmPMOW4": "starter",
+  "plan_ivBQT0voqG3BI": "pro",
 };
 
 // ─── Whop checkout URLs ───────────────────────────────────────────────────────
-// TODO: Replace these placeholder URLs with the real ones from your Whop
-// dashboard (Checkout Links section). Credit pack links should be added once
-// you've created them in Whop.
+// Credit pack links should be added once you've created them in Whop.
 export const WHOP_CHECKOUT_URLS: Record<string, string | null> = {
   // Plans
-  basic:   "https://whop.com/checkout/REPLACE_WITH_BASIC_CHECKOUT_ID",
-  starter: "https://whop.com/checkout/REPLACE_WITH_STARTER_CHECKOUT_ID",
-  pro:     "https://whop.com/checkout/REPLACE_WITH_PRO_CHECKOUT_ID",
+  basic:   "https://whop.com/checkout/plan_D5ZUinMIB5DyW",
+  starter: "https://whop.com/checkout/plan_0Ci43RCmPMOW4",
+  pro:     "https://whop.com/checkout/plan_ivBQT0voqG3BI",
   // Credit packs — add URLs once created in Whop
   "starter-pack": null,
   "creator-pack": null,
