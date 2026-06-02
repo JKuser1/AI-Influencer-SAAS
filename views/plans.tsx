@@ -104,29 +104,99 @@ export default function Plans() {
   const { data: user } = useGetMe();
   const { toast } = useToast();
   const router = useRouter();
-  const openCheckout = (planId: string) => {
-    if (!user) { router.push("/auth/register"); return; }
-    const productId = WHOP_PRODUCT_IDS[planId];
-    if (!productId) return;
 
-    const launch = () => window.Whop?.openCheckout({ productId });
+  const openCheckout = (productId: string, planName: string) => {
+    // Not logged in — save intended plan and redirect to login
+    if (!user) {
+      localStorage.setItem("intended_plan", planName);
+      localStorage.setItem("intended_product_id", productId);
+      router.push("/login?redirect=/plans");
+      return;
+    }
 
+    // Try Whop embed first
     if (window.Whop?.openCheckout) {
-      launch();
+      window.Whop.openCheckout({ productId });
+      return;
+    }
+
+    // Fallback: inject the script then retry, or show iframe modal
+    const existing = document.querySelector('script[src*="whop-embed"]');
+    if (!existing) {
+      const s = document.createElement("script");
+      s.src = "https://whop.com/embed/whop-embed.js";
+      s.onload = () => setTimeout(() => {
+        if (window.Whop?.openCheckout) {
+          window.Whop.openCheckout({ productId });
+        } else {
+          openIframeModal(productId);
+        }
+      }, 300);
+      document.head.appendChild(s);
     } else {
-      // Script hasn't loaded yet — inject it manually and retry
-      const existing = document.querySelector('script[src*="whop-embed"]');
-      if (!existing) {
-        const s = document.createElement("script");
-        s.src = "https://whop.com/embed/whop-embed.js";
-        s.onload = () => setTimeout(launch, 300);
-        document.head.appendChild(s);
-      } else {
-        // Script tag exists but window.Whop not ready — wait briefly and retry
-        setTimeout(launch, 500);
-      }
+      // Script tag exists but window.Whop not ready yet
+      setTimeout(() => {
+        if (window.Whop?.openCheckout) {
+          window.Whop.openCheckout({ productId });
+        } else {
+          openIframeModal(productId);
+        }
+      }, 600);
     }
   };
+
+  const openIframeModal = (productId: string) => {
+    if (document.getElementById("whop-overlay")) return;
+
+    const overlay = document.createElement("div");
+    overlay.id = "whop-overlay";
+    overlay.style.cssText = [
+      "position:fixed;top:0;left:0;width:100%;height:100%",
+      "background:rgba(0,0,0,0.8);z-index:9999",
+      "display:flex;align-items:center;justify-content:center",
+    ].join(";");
+
+    const modal = document.createElement("div");
+    modal.style.cssText = [
+      "position:relative;width:480px;height:680px",
+      "border-radius:16px;overflow:hidden;background:white",
+    ].join(";");
+
+    const closeBtn = document.createElement("button");
+    closeBtn.innerHTML = "&#x2715;";
+    closeBtn.style.cssText = [
+      "position:absolute;top:10px;right:10px",
+      "background:rgba(0,0,0,0.5);color:white",
+      "border:none;border-radius:50%;width:32px;height:32px",
+      "font-size:16px;cursor:pointer;z-index:10",
+    ].join(";");
+    const removeOverlay = () => {
+      if (document.body.contains(overlay)) document.body.removeChild(overlay);
+    };
+    closeBtn.onclick = removeOverlay;
+
+    const iframe = document.createElement("iframe");
+    iframe.src = `https://whop.com/checkout/${productId}/`;
+    iframe.style.cssText = "width:100%;height:100%;border:none;";
+
+    modal.appendChild(closeBtn);
+    modal.appendChild(iframe);
+    overlay.appendChild(modal);
+    overlay.onclick = (e) => { if (e.target === overlay) removeOverlay(); };
+    document.body.appendChild(overlay);
+  };
+
+  // After login, auto-open checkout if user came from a plan button click
+  useEffect(() => {
+    if (!user) return;
+    const productId = localStorage.getItem("intended_product_id");
+    const planName  = localStorage.getItem("intended_plan");
+    if (productId && planName) {
+      localStorage.removeItem("intended_product_id");
+      localStorage.removeItem("intended_plan");
+      setTimeout(() => openCheckout(productId, planName), 500);
+    }
+  }, [user]);
 
   // Listen for Whop's post-purchase message and activate the plan via API
   useEffect(() => {
@@ -228,7 +298,7 @@ export default function Plans() {
                       <span style={{ fontSize: 13, color: C.muted }}>/mo</span>
                     </div>
                     <Button
-                      onClick={() => openCheckout(plan.id)}
+                      onClick={() => openCheckout(WHOP_PRODUCT_IDS[plan.id], plan.id)}
                       disabled={isCurrentPlan}
                       style={{
                         width: "100%", height: 36, fontSize: 13, fontWeight: 700,
@@ -292,7 +362,7 @@ export default function Plans() {
                     borderLeft: `1px solid ${C.border}`,
                   }}>
                     <Button
-                      onClick={() => openCheckout(plan.id)}
+                      onClick={() => openCheckout(WHOP_PRODUCT_IDS[plan.id], plan.id)}
                       disabled={isCurrentPlan}
                       style={{
                         width: "100%", height: 36, fontSize: 13, fontWeight: 700,

@@ -5,7 +5,7 @@ export async function GET(request: Request) {
   const { supabase, user } = await getAuthenticatedUser(request);
 
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(null, { status: 200 });
   }
 
   // Fetch profile from profiles table
