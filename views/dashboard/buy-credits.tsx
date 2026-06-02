@@ -80,7 +80,6 @@ export default function BuyCredits() {
   const { data: me } = useGetMe();
   const { data: credits } = useCredits();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [purchasing, setPurchasing] = useState<string | null>(null);
 
   const hasSubscription = !!(me?.plan && PLAN_NAMES[me.plan]);
@@ -105,7 +104,7 @@ export default function BuyCredits() {
     setPurchasing(packId);
 
     const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id ?? me?.id ?? "";
+    const userId = String(session?.user?.id ?? me?.id ?? "");
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
 
     const checkoutUrl = buildCheckoutUrl({

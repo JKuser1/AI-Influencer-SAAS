@@ -107,7 +107,7 @@ export default function Plans() {
     setPendingPlan(planId);
 
     const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id ?? user.id;
+    const userId = String(session?.user?.id ?? user.id);
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
 
     const checkoutUrl = buildCheckoutUrl({
