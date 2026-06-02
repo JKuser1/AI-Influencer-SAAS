@@ -8,8 +8,7 @@ import { Check, X, Zap, Lock } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import { WHOP_CHECKOUT_URLS, buildCheckoutUrl } from "@/lib/whop";
+import { WHOP_CHECKOUT_URLS } from "@/lib/whop";
 
 const C = {
   primary: "#7C5CFC",
@@ -86,16 +85,11 @@ export default function Plans() {
   const router = useRouter();
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
 
-  /**
-   * Redirect the user to the Whop checkout page for the chosen plan.
-   * The user's ID is passed as metadata so the webhook can activate the
-   * correct account after payment succeeds.
-   */
-  const selectPlan = async (planId: string) => {
+  const selectPlan = (planId: string) => {
     if (!user) { router.push("/auth/register"); return; }
 
-    const baseUrl = WHOP_CHECKOUT_URLS[planId];
-    if (!baseUrl) {
+    const url = WHOP_CHECKOUT_URLS[planId];
+    if (!url) {
       toast({
         title: "Coming soon",
         description: "This plan is not yet available for purchase. Please contact support.",
@@ -105,19 +99,7 @@ export default function Plans() {
     }
 
     setPendingPlan(planId);
-
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = String(session?.user?.id ?? user.id);
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
-
-    const checkoutUrl = buildCheckoutUrl({
-      baseUrl,
-      userId,
-      redirectUrl: `${appUrl}/dashboard?checkout=success`,
-    });
-
-    window.location.href = checkoutUrl;
-    // Note: setPendingPlan(null) is intentionally omitted — the page navigates away.
+    window.location.href = url;
   };
 
   const currentPlan = user?.plan ?? "basic";
