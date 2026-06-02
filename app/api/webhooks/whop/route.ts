@@ -1,7 +1,29 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { verifyWhopWebhookSignature, WHOP_PLAN_ID_MAP } from "@/lib/whop";
+import { WHOP_PLAN_ID_MAP } from "@/lib/whop";
 import { PLAN_CREDITS } from "@/lib/supabase-server";
+
+/**
+ * Verify a Whop webhook signature using HMAC-SHA256.
+ * This lives here (server-only route) so Node's crypto module is never
+ * bundled into client-side code.
+ */
+function verifyWhopWebhookSignature(
+  rawBody: string,
+  signatureHeader: string | null,
+  secret: string
+): boolean {
+  if (!signatureHeader) return false;
+  const hmac = crypto.createHmac("sha256", secret);
+  hmac.update(rawBody);
+  const expected = `sha256=${hmac.digest("hex")}`;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
+  } catch {
+    return false;
+  }
+}
 
 // Credit pack metadata → credit amount mapping (mirrors /api/credits/purchase)
 const PACK_CREDITS: Record<string, { credits: number; name: string }> = {

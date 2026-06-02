@@ -1,5 +1,3 @@
-import crypto from "crypto";
-
 // ─── Whop Plan ID → internal plan name mapping ───────────────────────────────
 // These are the Whop plan IDs extracted from the checkout link paths.
 export const WHOP_PLAN_ID_MAP: Record<string, string> = {
@@ -47,28 +45,4 @@ export function buildCheckoutUrl({
   return url.toString();
 }
 
-/**
- * Verify a Whop webhook signature using HMAC-SHA256.
- * Returns true if the signature matches.
- *
- * Whop signs the raw request body with the secret you set in the dashboard.
- * Header name: "whop-signature"  (format: "sha256=<hex>")
- */
-export function verifyWhopWebhookSignature(
-  rawBody: string,
-  signatureHeader: string | null,
-  secret: string
-): boolean {
-  if (!signatureHeader) return false;
-  const hmac = crypto.createHmac("sha256", secret);
-  hmac.update(rawBody);
-  const expected = `sha256=${hmac.digest("hex")}`;
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(expected),
-      Buffer.from(signatureHeader)
-    );
-  } catch {
-    return false;
-  }
-}
+
