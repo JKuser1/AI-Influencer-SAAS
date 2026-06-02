@@ -9,7 +9,7 @@ import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { useQueryClient } from "@tanstack/react-query";
+import { WHOP_CHECKOUT_URLS, buildCheckoutUrl } from "@/lib/whop";
 
 const C = {
   primary: "#7C5CFC",
@@ -80,66 +80,44 @@ function Cell({ value }: { value: CellValue }) {
   return <span style={{ color: C.text, fontWeight: 600, fontSize: 14 }}>{value}</span>;
 }
 
-const PLAN_CREDITS: Record<string, number> = {
-  basic: 300,
-  starter: 800,
-  pro: 2500,
-};
-
 export default function Plans() {
   const { data: user } = useGetMe();
   const { toast } = useToast();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
 
-  // TODO: Replace selectPlan() with Lemon Squeezy webhook when payment is connected.
-  // The webhook will handle plan assignment automatically for real paying users.
-  // This current implementation is for testing only.
+  /**
+   * Redirect the user to the Whop checkout page for the chosen plan.
+   * The user's ID is passed as metadata so the webhook can activate the
+   * correct account after payment succeeds.
+   */
   const selectPlan = async (planId: string) => {
     if (!user) { router.push("/auth/register"); return; }
 
-    setPendingPlan(planId);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const res = await fetch("/api/plans/subscribe", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ planId }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || "Failed to update plan");
-      }
-
-      const data = await res.json();
-      const creditsAssigned = data.creditsAssigned ?? PLAN_CREDITS[planId] ?? 0;
-
+    const baseUrl = WHOP_CHECKOUT_URLS[planId];
+    if (!baseUrl) {
       toast({
-        title: "Plan activated!",
-        description: `${creditsAssigned.toLocaleString()} credits added to your account.`,
-      });
-
-      // Invalidate queries so navbar credits and user plan refresh
-      queryClient.invalidateQueries({ queryKey: ["credits"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-
-      router.push("/dashboard");
-    } catch (err: any) {
-      toast({
-        title: "Failed to update plan",
-        description: err?.message || "Please try again later",
+        title: "Coming soon",
+        description: "This plan is not yet available for purchase. Please contact support.",
         variant: "destructive",
       });
-    } finally {
-      setPendingPlan(null);
+      return;
     }
+
+    setPendingPlan(planId);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id ?? user.id;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+
+    const checkoutUrl = buildCheckoutUrl({
+      baseUrl,
+      userId,
+      redirectUrl: `${appUrl}/dashboard?checkout=success`,
+    });
+
+    window.location.href = checkoutUrl;
+    // Note: setPendingPlan(null) is intentionally omitted — the page navigates away.
   };
 
   const currentPlan = user?.plan ?? "basic";
@@ -228,7 +206,7 @@ export default function Plans() {
                         boxShadow: plan.highlight && !isCurrentPlan ? `0 0 16px ${C.primary}40` : "none",
                       }}
                     >
-                      {pendingPlan === plan.id ? "Activating..." : isCurrentPlan ? "Current Plan" : plan.cta}
+                      {pendingPlan === plan.id ? "Redirecting..." : isCurrentPlan ? "Current Plan" : plan.cta}
                     </Button>
                   </div>
                 );
@@ -292,7 +270,7 @@ export default function Plans() {
                         boxShadow: plan.highlight && !isCurrentPlan ? `0 0 16px ${C.primary}40` : "none",
                       }}
                     >
-                      {pendingPlan === plan.id ? "Activating..." : isCurrentPlan ? "Current Plan" : plan.cta}
+                      {pendingPlan === plan.id ? "Redirecting..." : isCurrentPlan ? "Current Plan" : plan.cta}
                     </Button>
                   </div>
                 );
